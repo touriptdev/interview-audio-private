@@ -132,7 +132,7 @@
   </div>
 </div>
 <script>
-const META = {"version": 1, "kdf": {"salt": "90FkH9MZmx2xwjuCDzA4Pw==", "iterations": 210000}, "audio": "audio/ce7bed1dc7822a8c.enc", "audio_iv": "s8QFRR4kuYK9B7ty", "chapters": "chapters/ce7bed1dc7822a8c.json.enc", "chapters_iv": "BADdbVKtBVlu8Ytg", "duration": 2390.57, "size": 14343932};
+const BUNDLE_URL = 'data.enc';
 
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
@@ -162,20 +162,52 @@ function b64ToBytes(value) {
   return bytes;
 }
 
-async function deriveKey(password) {
+async function deriveKey(password, saltB64, iterations) {
   const material = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: b64ToBytes(META.kdf.salt),
-      iterations: META.kdf.iterations, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: b64ToBytes(saltB64), iterations, hash: 'SHA-256' },
     material, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
 }
 
-async function decryptPayload(key, url, iv) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error('Could not download the encrypted file.');
-  const ciphertext = await response.arrayBuffer();
-  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBytes(iv) }, key, ciphertext);
+function parseBundle(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  if (bytes.length < 9 || magic !== 'P2A1') throw new Error('damaged file');
+  const headerLength = new DataView(arrayBuffer).getUint32(4, false);
+  const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + headerLength)));
+  const payload = bytes.subarray(8 + headerLength);
+  return {
+    header,
+    audio: payload.subarray(0, header.audio_len),
+    chapters: payload.subarray(header.audio_len, header.audio_len + header.chapters_len),
+  };
+}
+
+async function loadBundle(password) {
+  let response;
+  try {
+    response = await fetch(BUNDLE_URL + '?v=' + Date.now(), { cache: 'no-store' });
+  } catch (error) {
+    throw new Error('Could not reach the server. Check your internet and try again.');
+  }
+  if (!response.ok) {
+    throw new Error('Could not download the audio (error ' + response.status +
+                    '). Please refresh the page and try again.');
+  }
+  const bundle = parseBundle(await response.arrayBuffer());
+  const key = await deriveKey(password, bundle.header.kdf.salt, bundle.header.kdf.iterations);
+  let payload;
+  try {
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64ToBytes(bundle.header.chapters_iv) }, key, bundle.chapters);
+    payload = JSON.parse(new TextDecoder().decode(plain));
+  } catch (error) {
+    throw new Error('WRONG_PASSWORD');
+  }
+  const audioBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64ToBytes(bundle.header.audio_iv) }, key, bundle.audio);
+  return { payload, audioBuffer, header: bundle.header };
 }
 
 function fmt(seconds) {
@@ -274,22 +306,19 @@ form.addEventListener('submit', async (event) => {
     if (!window.isSecureContext || !crypto.subtle) {
       throw new Error('Open this page over HTTPS (or localhost).');
     }
-    const key = await deriveKey(passwordInput.value);
-    const [audioBuffer, chapterBuffer] = await Promise.all([
-      decryptPayload(key, META.audio, META.audio_iv),
-      decryptPayload(key, META.chapters, META.chapters_iv),
-    ]);
-    const payload = JSON.parse(new TextDecoder().decode(chapterBuffer));
+    unlockBtn.textContent = 'Downloading...';
+    const { payload, audioBuffer, header } = await loadBundle(passwordInput.value);
+    unlockBtn.textContent = 'Decrypting...';
 
     episode = {
       title: payload.title || 'Private audio',
-      duration: META.duration,
+      duration: header.duration,
       chapters: payload.chapters || [],
     };
     audio.src = URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/mpeg' }));
     titleEl.textContent = episode.title;
     nowEl.textContent = episode.title;
-    sizeEl.textContent = (META.size / 1048576).toFixed(1) + ' MB';
+    sizeEl.textContent = (header.size / 1048576).toFixed(1) + ' MB';
     countEl.textContent = episode.chapters.length + ' questions';
     gate.hidden = true;
     app.hidden = false;
@@ -297,8 +326,7 @@ form.addEventListener('submit', async (event) => {
     dur.textContent = fmt(episode.duration);
     audio.load();
   } catch (error) {
-    const wrong = error && (error.name === 'OperationError' || error.name === 'DataError');
-    errorEl.textContent = wrong
+    errorEl.textContent = (error && error.message === 'WRONG_PASSWORD')
       ? 'Wrong password. Please try again.'
       : (error.message || 'Could not unlock the audio.');
     passwordInput.select();
