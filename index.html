@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0b1220">
+<title>Private audio</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1220; --card: #141d2e; --card2: #1b2740;
+    --text: #eef2f8; --muted: #93a2b8; --accent: #4f8cff; --accent2: #7aa8ff;
+    --line: #243149;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; padding: 1.25rem 1rem 3rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.45;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: .25rem 0 .35rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 1.1rem; font-size: .93rem; }
+  .gate {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--line); border-radius: 18px;
+    padding: 1.4rem; max-width: 420px; margin: 12vh auto 0;
+    box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  }
+  .gate h1 { margin-top: 0; }
+  input[type=password] {
+    width: 100%; padding: .85rem .9rem; border-radius: 12px;
+    background: #0e1626; color: var(--text); border: 1px solid var(--line);
+    font-size: 1rem; margin: .35rem 0 .75rem;
+  }
+  .gate button { width: 100%; }
+  .error { color: #ff9a9a; font-size: .85rem; margin: .6rem 0 0; min-height: 1.2rem; }
+  .player {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--line); border-radius: 18px; padding: 1rem;
+    position: sticky; top: 0; z-index: 5;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .now { font-weight: 600; font-size: .98rem; margin-bottom: .6rem; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 26px;
+    background: transparent; margin: 0; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; border-radius: 999px; background: var(--line);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); margin-top: -7px; border: 2px solid #fff2;
+    box-shadow: 0 0 0 4px rgba(79,140,255,.18);
+  }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--line); }
+  input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--accent);
+  }
+  .times { display: flex; justify-content: space-between; color: var(--muted);
+           font-variant-numeric: tabular-nums; font-size: .82rem; margin-top: -.2rem; }
+  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; margin-top: .75rem; }
+  button {
+    appearance: none; border: 1px solid var(--line); background: var(--card2);
+    color: var(--text); border-radius: 12px; padding: .7rem .25rem;
+    font-size: .88rem; font-weight: 600; cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:active { transform: scale(.97); }
+  button.primary {
+    background: linear-gradient(180deg, var(--accent2), var(--accent));
+    border-color: transparent; color: #06101f; font-size: 1.02rem;
+  }
+  button:disabled { opacity: .7; }
+  h2 { font-size: .95rem; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .08em; margin: 1.5rem 0 .6rem; }
+  ol.chapters { list-style: none; margin: 0; padding: 0; }
+  ol.chapters li { margin: 0 0 .45rem; }
+  .chapter {
+    width: 100%; text-align: left; display: flex; align-items: baseline; gap: .6rem;
+    padding: .8rem .9rem; border-radius: 12px; background: var(--card);
+    border: 1px solid transparent; font-weight: 400; line-height: 1.35;
+  }
+  .chapter .lab { color: var(--accent2); font-weight: 700; font-size: .8rem;
+                  min-width: 3.2rem; font-variant-numeric: tabular-nums; }
+  .chapter .q { flex: 1; font-size: .94rem; }
+  .chapter .t { color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+  .chapter.active { border-color: var(--accent); background: #16233c; }
+  .chapter.active .lab { color: #fff; }
+  .meta { color: var(--muted); font-size: .85rem; margin-top: 1.4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="gate" id="gate">
+    <h1>Private audio</h1>
+    <p class="sub">Enter the password you were sent. It never leaves your device &mdash;
+      the audio is decrypted in your browser.</p>
+    <form id="unlock-form">
+      <input id="password" type="password" autocomplete="current-password"
+             placeholder="Password" required>
+      <button class="primary" id="unlock" type="submit">Unlock</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <h1 id="title">Private audio</h1>
+    <p class="sub">Tap a question to jump straight to that answer. Playback keeps going after each one.</p>
+
+    <div class="player">
+      <div class="now" id="now"></div>
+      <audio id="audio" preload="metadata" playsinline></audio>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <div class="times"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+      <div class="controls">
+        <button type="button" data-skip="-10" aria-label="Back 10 seconds">&minus;10s</button>
+        <button type="button" data-skip="-5" aria-label="Back 5 seconds">&minus;5s</button>
+        <button type="button" id="play" class="primary" aria-label="Play or pause">Play</button>
+        <button type="button" data-skip="5" aria-label="Forward 5 seconds">+5s</button>
+        <button type="button" data-skip="10" aria-label="Forward 10 seconds">+10s</button>
+      </div>
+    </div>
+
+    <h2>Questions</h2>
+    <ol class="chapters" id="chapters"></ol>
+    <p class="meta"><span id="episode-size"></span> &middot; <span id="chapter-count"></span></p>
+  </div>
+</div>
+<script>
+const META = {"version": 1, "kdf": {"salt": "UcwMvUV4vFmB7VIVYMgm8w==", "iterations": 210000}, "audio": "audio/90485d68f6e144d5.enc", "audio_iv": "eiwB2nsUQtf3imqq", "chapters": "chapters/90485d68f6e144d5.json.enc", "chapters_iv": "NROlIge75eAoDo44", "duration": 2389.82, "size": 14339468};
+
+const gate = document.getElementById('gate');
+const app = document.getElementById('app');
+const form = document.getElementById('unlock-form');
+const passwordInput = document.getElementById('password');
+const unlockBtn = document.getElementById('unlock');
+const errorEl = document.getElementById('error');
+const audio = document.getElementById('audio');
+const seek = document.getElementById('seek');
+const cur = document.getElementById('cur');
+const dur = document.getElementById('dur');
+const playBtn = document.getElementById('play');
+const nowEl = document.getElementById('now');
+const titleEl = document.getElementById('title');
+const listEl = document.getElementById('chapters');
+const sizeEl = document.getElementById('episode-size');
+const countEl = document.getElementById('chapter-count');
+
+let episode = null;
+let active = -1;
+let pendingSeek = null;
+
+function b64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function deriveKey(password) {
+  const material = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: b64ToBytes(META.kdf.salt),
+      iterations: META.kdf.iterations, hash: 'SHA-256' },
+    material, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+}
+
+async function decryptPayload(key, url, iv) {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Could not download the encrypted file.');
+  const ciphertext = await response.arrayBuffer();
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBytes(iv) }, key, ciphertext);
+}
+
+function fmt(seconds) {
+  seconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = h ? String(m).padStart(2, '0') : String(m);
+  return (h ? h + ':' : '') + mm + ':' + String(s).padStart(2, '0');
+}
+
+function totalDuration() {
+  return Number.isFinite(audio.duration) && audio.duration > 0
+    ? audio.duration : (episode ? episode.duration : 0);
+}
+
+function setActive(index) {
+  if (index === active) return;
+  const items = listEl.querySelectorAll('li');
+  items.forEach((li, i) => li.querySelector('.chapter').classList.toggle('active', i === index));
+  active = index;
+  if (index >= 0 && items[index] && !audio.paused) {
+    items[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function activeIndex(time) {
+  if (!episode) return -1;
+  let index = -1;
+  for (let i = 0; i < episode.chapters.length; i++) {
+    if (time + 0.2 >= episode.chapters[i].start) index = i;
+  }
+  return index;
+}
+
+function seekTo(time) {
+  const max = totalDuration() || time;
+  const target = Math.min(Math.max(0, time), max);
+  if (audio.readyState >= 1) {
+    audio.currentTime = target;
+  } else {
+    pendingSeek = target;
+  }
+}
+
+function toggle() {
+  if (audio.paused) {
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
+}
+
+function buildChapters() {
+  listEl.innerHTML = '';
+  active = -1;
+  episode.chapters.forEach((chapter, index) => {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chapter';
+
+    const lab = document.createElement('span');
+    lab.className = 'lab';
+    lab.textContent = chapter.label || 'Part ' + (index + 1);
+
+    const text = document.createElement('span');
+    text.className = 'q';
+    text.textContent = chapter.question;
+
+    const time = document.createElement('span');
+    time.className = 't';
+    time.textContent = fmt(chapter.start);
+
+    button.append(lab, text, time);
+    button.addEventListener('click', () => {
+      seekTo(chapter.start + 0.05);
+      if (audio.readyState >= 1) {
+        audio.play().catch(() => {});
+      } else {
+        audio.addEventListener('loadedmetadata', () => audio.play().catch(() => {}), { once: true });
+      }
+    });
+    li.appendChild(button);
+    listEl.appendChild(li);
+  });
+}
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  errorEl.textContent = '';
+  unlockBtn.disabled = true;
+  unlockBtn.textContent = 'Decrypting...';
+
+  try {
+    if (!window.isSecureContext || !crypto.subtle) {
+      throw new Error('Open this page over HTTPS (or localhost).');
+    }
+    const key = await deriveKey(passwordInput.value);
+    const [audioBuffer, chapterBuffer] = await Promise.all([
+      decryptPayload(key, META.audio, META.audio_iv),
+      decryptPayload(key, META.chapters, META.chapters_iv),
+    ]);
+    const payload = JSON.parse(new TextDecoder().decode(chapterBuffer));
+
+    episode = {
+      title: payload.title || 'Private audio',
+      duration: META.duration,
+      chapters: payload.chapters || [],
+    };
+    audio.src = URL.createObjectURL(new Blob([audioBuffer], { type: 'audio/mpeg' }));
+    titleEl.textContent = episode.title;
+    nowEl.textContent = episode.title;
+    sizeEl.textContent = (META.size / 1048576).toFixed(1) + ' MB';
+    countEl.textContent = episode.chapters.length + ' questions';
+    gate.hidden = true;
+    app.hidden = false;
+    buildChapters();
+    dur.textContent = fmt(episode.duration);
+    audio.load();
+  } catch (error) {
+    const wrong = error && (error.name === 'OperationError' || error.name === 'DataError');
+    errorEl.textContent = wrong
+      ? 'Wrong password. Please try again.'
+      : (error.message || 'Could not unlock the audio.');
+    passwordInput.select();
+  } finally {
+    unlockBtn.disabled = false;
+    unlockBtn.textContent = 'Unlock';
+  }
+});
+
+audio.addEventListener('loadedmetadata', () => {
+  dur.textContent = fmt(totalDuration());
+  seek.max = String(Math.max(1, Math.round(totalDuration() * 10)));
+  if (pendingSeek !== null) {
+    audio.currentTime = pendingSeek;
+    pendingSeek = null;
+  }
+});
+
+audio.addEventListener('timeupdate', () => {
+  const total = totalDuration();
+  cur.textContent = fmt(audio.currentTime);
+  if (total > 0) {
+    seek.value = String(Math.round(audio.currentTime / total * Number(seek.max)));
+  }
+  setActive(activeIndex(audio.currentTime));
+});
+
+audio.addEventListener('play', () => { playBtn.textContent = 'Pause'; });
+audio.addEventListener('pause', () => { playBtn.textContent = 'Play'; });
+audio.addEventListener('ended', () => { playBtn.textContent = 'Play'; });
+
+playBtn.addEventListener('click', toggle);
+document.querySelectorAll('[data-skip]').forEach((button) => {
+  button.addEventListener('click', () => {
+    seekTo(audio.currentTime + Number(button.dataset.skip));
+  });
+});
+
+seek.addEventListener('input', () => {
+  const total = totalDuration();
+  if (total > 0) seekTo(Number(seek.value) / Number(seek.max) * total);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (app.hidden) return;
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName)) return;
+  if (event.code === 'Space') { event.preventDefault(); toggle(); }
+  if (event.code === 'ArrowLeft') { event.preventDefault(); seekTo(audio.currentTime - 5); }
+  if (event.code === 'ArrowRight') { event.preventDefault(); seekTo(audio.currentTime + 5); }
+});
+</script>
+</body>
+</html>

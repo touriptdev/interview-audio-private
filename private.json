@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kdf": {
+    "salt": "UcwMvUV4vFmB7VIVYMgm8w==",
+    "iterations": 210000
+  },
+  "audio": "audio/90485d68f6e144d5.enc",
+  "audio_iv": "eiwB2nsUQtf3imqq",
+  "chapters": "chapters/90485d68f6e144d5.json.enc",
+  "chapters_iv": "NROlIge75eAoDo44",
+  "duration": 2389.82,
+  "size": 14339468
+}
